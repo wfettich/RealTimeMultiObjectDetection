@@ -14,7 +14,9 @@ class ViewController: UIViewController {
 
     private let cameraManager = CameraManager()
     private let fpsCounter = FPSCounter()
+    private let objectDetector = ObjectDetector()
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var detectionOverlay: DetectionOverlayView!
 
     // UI Elements
     private let fpsLabel: UILabel = {
@@ -27,6 +29,19 @@ class ViewController: UIViewController {
         label.layer.cornerRadius = 8
         label.layer.masksToBounds = true
         label.text = "FPS: 0.0"
+        return label
+    }()
+
+    private let inferenceLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.textColor = .white
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        label.font = UIFont.monospacedSystemFont(ofSize: 16, weight: .medium)
+        label.textAlignment = .center
+        label.layer.cornerRadius = 8
+        label.layer.masksToBounds = true
+        label.text = "Inference: 0ms"
         return label
     }()
 
@@ -62,6 +77,11 @@ class ViewController: UIViewController {
     private func setupUI() {
         view.backgroundColor = .black
 
+        // Add detection overlay
+        detectionOverlay = DetectionOverlayView(frame: view.bounds)
+        detectionOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(detectionOverlay)
+
         // Add FPS label
         view.addSubview(fpsLabel)
         NSLayoutConstraint.activate([
@@ -69,6 +89,15 @@ class ViewController: UIViewController {
             fpsLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             fpsLabel.widthAnchor.constraint(equalToConstant: 120),
             fpsLabel.heightAnchor.constraint(equalToConstant: 40)
+        ])
+
+        // Add inference label
+        view.addSubview(inferenceLabel)
+        NSLayoutConstraint.activate([
+            inferenceLabel.topAnchor.constraint(equalTo: fpsLabel.bottomAnchor, constant: 8),
+            inferenceLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            inferenceLabel.widthAnchor.constraint(equalToConstant: 160),
+            inferenceLabel.heightAnchor.constraint(equalToConstant: 40)
         ])
 
         // Add toggle button
@@ -139,11 +168,19 @@ class ViewController: UIViewController {
         toggleButton.setTitleColor(.white, for: .normal)
         toggleButton.backgroundColor = .systemBlue
         updateFPSLabel(fps: 0.0)
+        updateInferenceLabel(time: 0.0)
+        detectionOverlay.clear()
     }
 
     private func updateFPSLabel(fps: Double) {
         DispatchQueue.main.async { [weak self] in
             self?.fpsLabel.text = String(format: "FPS: %.1f", fps)
+        }
+    }
+
+    private func updateInferenceLabel(time: TimeInterval) {
+        DispatchQueue.main.async { [weak self] in
+            self?.inferenceLabel.text = String(format: "Inference: %.0fms", time * 1000)
         }
     }
 
@@ -171,6 +208,22 @@ extension ViewController: CameraManagerDelegate {
         // Update FPS counter - only update UI when FPS value changes (once per second)
         if fpsCounter.tick() {
             updateFPSLabel(fps: fpsCounter.fps)
+        }
+
+        // Get pixel buffer from sample buffer
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            return
+        }
+
+        // Run object detection
+        objectDetector.detect(in: pixelBuffer) { [weak self] detections, inferenceTime in
+            guard let self = self else { return }
+
+            // Update UI with results
+            DispatchQueue.main.async {
+                self.detectionOverlay.update(with: detections)
+                self.updateInferenceLabel(time: inferenceTime)
+            }
         }
     }
 }
