@@ -1,4 +1,4 @@
-# RT_MultiObjectDetection
+# Real Time Multi-Object Detection
 
 Real-time multi-object detection iOS app with adaptive performance optimization. This project demonstrates production-ready computer vision techniques with a focus on performance, thermal management, and battery efficiency.
 
