@@ -14,9 +14,14 @@ class ViewController: UIViewController {
 
     private let cameraManager = CameraManager()
     private let fpsCounter = FPSCounter()
-    private let objectDetector = ObjectDetector()
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var detectionOverlay: DetectionOverlayView!
+
+    // Model detection
+    private var yoloDetector: DetectorProtocol?
+    private var mobileNetDetector: DetectorProtocol?
+    private var currentDetector: DetectorProtocol?
+    private var currentModelType: ModelType = .yoloV3Tiny
 
     // UI Elements
     private let fpsLabel: UILabel = {
@@ -45,6 +50,30 @@ class ViewController: UIViewController {
         return label
     }()
 
+    private let modelSegmentedControl: UISegmentedControl = {
+        let items = ModelType.allCases.map { $0.rawValue }
+        let control = UISegmentedControl(items: items)
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.selectedSegmentIndex = 0
+        control.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        control.selectedSegmentTintColor = .systemBlue
+        return control
+    }()
+
+    private let modelInfoLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.textColor = .white
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        label.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        label.textAlignment = .center
+        label.layer.cornerRadius = 8
+        label.layer.masksToBounds = true
+        label.numberOfLines = 2
+        label.text = "Loading..."
+        return label
+    }()
+
     private let toggleButton: UIButton = {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -63,6 +92,7 @@ class ViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        setupDetectors()
         setupUI()
         setupCamera()
     }
@@ -73,6 +103,16 @@ class ViewController: UIViewController {
     }
 
     // MARK: - Setup
+
+    private func setupDetectors() {
+        // Initialize both detectors
+        yoloDetector = ObjectDetector()
+        mobileNetDetector = DirectCoreMLDetector(modelName: "MobileNetV2_SSDLite", inputSize: 300, modelType: .mobilenet)
+
+        // Set initial detector
+        currentDetector = yoloDetector
+        updateModelInfo()
+    }
 
     private func setupUI() {
         view.backgroundColor = .black
@@ -98,6 +138,24 @@ class ViewController: UIViewController {
             inferenceLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             inferenceLabel.widthAnchor.constraint(equalToConstant: 160),
             inferenceLabel.heightAnchor.constraint(equalToConstant: 40)
+        ])
+
+        // Add model segmented control
+        view.addSubview(modelSegmentedControl)
+        NSLayoutConstraint.activate([
+            modelSegmentedControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            modelSegmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            modelSegmentedControl.widthAnchor.constraint(equalToConstant: 280)
+        ])
+        modelSegmentedControl.addTarget(self, action: #selector(modelChanged), for: .valueChanged)
+
+        // Add model info label
+        view.addSubview(modelInfoLabel)
+        NSLayoutConstraint.activate([
+            modelInfoLabel.topAnchor.constraint(equalTo: modelSegmentedControl.bottomAnchor, constant: 8),
+            modelInfoLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            modelInfoLabel.widthAnchor.constraint(equalToConstant: 280),
+            modelInfoLabel.heightAnchor.constraint(equalToConstant: 50)
         ])
 
         // Add toggle button
@@ -184,6 +242,33 @@ class ViewController: UIViewController {
         }
     }
 
+    @objc private func modelChanged() {
+        let selectedIndex = modelSegmentedControl.selectedSegmentIndex
+        guard let newModelType = ModelType.allCases.indices.contains(selectedIndex) ? ModelType.allCases[selectedIndex] : nil else {
+            return
+        }
+
+        currentModelType = newModelType
+
+        // Switch detector
+        switch newModelType {
+        case .yoloV3Tiny:
+            currentDetector = yoloDetector
+        case .mobileNetV2:
+            currentDetector = mobileNetDetector
+        }
+
+        updateModelInfo()
+    }
+
+    private func updateModelInfo() {
+        let info = """
+        \(currentModelType.framework)
+        Size: \(currentModelType.modelSize) | Input: \(currentModelType.inputSize)
+        """
+        modelInfoLabel.text = info
+    }
+
     private func showCameraPermissionAlert() {
         let alert = UIAlertController(
             title: "Camera Access Required",
@@ -215,8 +300,8 @@ extension ViewController: CameraManagerDelegate {
             return
         }
 
-        // Run object detection
-        objectDetector.detect(in: pixelBuffer) { [weak self] detections, inferenceTime in
+        // Run object detection with current model
+        currentDetector?.detect(in: pixelBuffer) { [weak self] detections, inferenceTime in
             guard let self = self else { return }
 
             // Update UI with results

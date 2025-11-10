@@ -2,7 +2,7 @@
 //  ObjectDetector.swift
 //  RT_MultiObjectDetection
 //
-//  Created by Claude on 07.11.2025.
+//  Created by Walter Fettich on 07.11.2025.
 //
 
 import Foundation
@@ -10,13 +10,7 @@ import Vision
 import CoreML
 import UIKit
 
-struct Detection {
-    let boundingBox: CGRect
-    let label: String
-    let confidence: Float
-}
-
-class ObjectDetector {
+class ObjectDetector: DetectorProtocol {
 
     // MARK: - Properties
 

@@ -2,7 +2,7 @@
 //  FPSCounter.swift
 //  RT_MultiObjectDetection
 //
-//  Created by Claude on 07.11.2025.
+//  Created by Walter Fettich on 07.11.2025.
 //
 
 import Foundation
