@@ -356,26 +356,48 @@ class DirectCoreMLDetector: DetectorProtocol {
         let numDetections = confidenceShape[0].intValue   // First dimension = number of detections
         let numClasses = confidenceShape[1].intValue      // Second dimension = number of classes
 
+        // NOTE: MobileNetV2_SSDLite only outputs top N detections (e.g., 2)
+        // This is a model limitation - it does NMS internally and returns pre-filtered results
+        // If you need more detections, you'll need a different model or retrain this one
         print("🔍 Processing \(numDetections) detections with \(numClasses) classes each")
+        print("⚠️  Model only returns top \(numDetections) detections (model limitation)")
 
         // Process each detection
         for detectionIdx in 0..<numDetections {
             // Find the class with highest confidence for this detection
+            // Also collect top 3 for debugging
             var maxConfidence: Float = 0
             var maxClassIdx: Int = 0
+            var topClasses: [(classIdx: Int, confidence: Float)] = []
 
             for classIdx in 0..<numClasses {
                 let confidence = confidenceArray[[detectionIdx as NSNumber, classIdx as NSNumber]].floatValue
+                topClasses.append((classIdx, confidence))
+
                 if confidence > maxConfidence {
                     maxConfidence = confidence
                     maxClassIdx = classIdx
                 }
             }
 
+            // Sort to get top 3 classes for debug output
+            topClasses.sort { $0.confidence > $1.confidence }
+            let top3 = topClasses.prefix(3)
+
+            // Debug: Show top 3 class predictions for this detection
+            print("🔍 Detection \(detectionIdx):")
+            for (rank, classInfo) in top3.enumerated() {
+                let className = classInfo.classIdx < cocoClassNames.count ? cocoClassNames[classInfo.classIdx] : "unknown"
+                print("   #\(rank + 1): class \(classInfo.classIdx) (\(className)) = \(String(format: "%.3f", classInfo.confidence))")
+            }
+
             // Filter by confidence threshold
             if maxConfidence < confidenceThreshold {
+                print("   ❌ Filtered: max confidence \(String(format: "%.3f", maxConfidence)) < threshold \(confidenceThreshold)")
                 continue
             }
+
+            print("   ✅ Keeping: \(cocoClassNames[maxClassIdx]) with confidence \(String(format: "%.3f", maxConfidence))")
 
             // Extract coordinates [ymin, xmin, ymax, xmax] in normalized 0-1 range
             let ymin = coordinatesArray[[detectionIdx as NSNumber, 0]].floatValue
@@ -392,11 +414,8 @@ class DirectCoreMLDetector: DetectorProtocol {
             )
 
             // Map class index to COCO label
-            // MobileNetV2 outputs 90 classes WITHOUT background (indices 0-89)
-            // cocoClassNames has background at index 0, so we need to offset by +1
-            // MobileNetV2 class 0 = cocoClassNames[1] = "person"
-            let labelIndex = maxClassIdx + 1
-            let label = labelIndex < cocoClassNames.count ? cocoClassNames[labelIndex] : "object"
+            // Try direct mapping first (no offset) - debug logging will show if this is correct
+            let label = maxClassIdx < cocoClassNames.count ? cocoClassNames[maxClassIdx] : "object"
 
             let detection = Detection(
                 boundingBox: boundingBox,

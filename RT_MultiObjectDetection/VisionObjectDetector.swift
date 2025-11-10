@@ -10,7 +10,7 @@ import Vision
 import CoreML
 import UIKit
 
-class ObjectDetector: DetectorProtocol {
+class VisionObjectDetector: DetectorProtocol {
 
     // MARK: - Properties
 

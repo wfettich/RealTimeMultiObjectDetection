@@ -106,7 +106,7 @@ class ViewController: UIViewController {
 
     private func setupDetectors() {
         // Initialize both detectors
-        yoloDetector = ObjectDetector()
+        yoloDetector = VisionObjectDetector()
         mobileNetDetector = DirectCoreMLDetector(modelName: "MobileNetV2_SSDLite", inputSize: 300, modelType: .mobilenet)
 
         // Set initial detector
